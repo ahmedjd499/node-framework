@@ -9,15 +9,7 @@ const path = require('path');
 const fileExists = (filePath) => fs.existsSync(filePath);
 
 // Function to create a model
-async function createModel(entityName, fields) {
-  const modelName = `${entityName}Model`;
-  const entityPath = path.join('src', 'entities', `${entityName}.js`);
-
-  if (!fileExists(entityPath)) {
-    console.log(`Entity ${entityName} does not exist. Please create it first.`);
-    return;
-  }
-
+async function createModel(modelName, fields, addTimestamps) {
   const mongooseFields = fields.map(field => {
     let mongooseType;
 
@@ -42,47 +34,182 @@ async function createModel(entityName, fields) {
         break;
     }
 
-    return `  ${field.name}: { type: ${mongooseType}, required: true },`;
+    return `  ${field.name}: { type: ${mongooseType}, required: ${field.required} },`;
   }).join('\n');
+
+  const timestampsOption = addTimestamps ? `, { timestamps: true }` : '';
 
   const modelTemplate = `
 const mongoose = require('mongoose');
 
 const ${modelName}Schema = new mongoose.Schema({
 ${mongooseFields}
-});
+}${timestampsOption});
 
 module.exports = mongoose.model('${modelName}', ${modelName}Schema);
 `;
 
   fs.writeFileSync(`./src/models/${modelName}.js`, modelTemplate.trim());
   console.log(`Model ${modelName} created with fields: ${fields.map(f => f.name).join(', ')}`);
+
+  // Ask if the user wants to create a controller
+  const { createControllerAnswer } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'createControllerAnswer',
+      message: `Do you want to create a controller for ${modelName}?`,
+      default: true,
+    }
+  ]);
+
+  if (createControllerAnswer) {
+    await createController(modelName);
+  }
 }
 
-// Function to create an entity with fields
-async function createEntity(entityName) {
+// Function to create a controller with CRUD methods
+async function createController(modelName) {
+  const controllerName = `${modelName}Controller`;
 
+
+  const controllerTemplate = `
+const CrudController = require('./CrudController');
+const mongooseModel = require('../models/${modelName}');
+
+class ${controllerName} extends CrudController {
+  constructor() {
+    super(mongooseModel); // Pass the model to the parent CrudController
+  }
+
+  // Uncomment and override this method if you need custom create behavior
+  // async create(req, res) {
+  //   // Custom create logic here
+  //   super.create(req, res); // Call the parent class method if needed
+  // }
+
+  // Uncomment and override this method if you need custom read behavior
+  // async read(req, res) {
+  //   // Custom read logic here
+  //   super.read(req, res); // Call the parent class method if needed
+  // }
+
+  // Uncomment and override this method if you need custom update behavior
+  // async update(req, res) {
+  //   // Custom update logic here
+  //   super.update(req, res); // Call the parent class method if needed
+  // }
+
+  // Uncomment and override this method if you need custom delete behavior
+  // async delete(req, res) {
+  //   // Custom delete logic here
+  //   super.delete(req, res); // Call the parent class method if needed
+  // }
+}
+
+module.exports = new ${controllerName}();
+`;
+
+  fs.writeFileSync(`./src/controllers/${controllerName}.js`, controllerTemplate.trim());
+  console.log(`${controllerName} created, extending the global CRUD controller.`);
+
+  // Ask if the user wants to create routes
+  const { createRoutesAnswer } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'createRoutesAnswer',
+      message: `Do you want to create routes for ${controllerName}?`,
+      default: true,
+    }
+  ]);
+
+  if (createRoutesAnswer) {
+    await createRoutes(modelName);
+  }
+}
+
+// Function to create routes for a controller
+async function createRoutes(modelName) {
+  const routeName = `${modelName}Routes`;
+  const controllerName = `${modelName}Controller`;
+
+  const routeTemplate = `
+const express = require('express');
+const ${controllerName} = require('../controllers/${controllerName}');
+
+const router = express.Router();
+
+// Define the routes for the ${modelName} resource
+router.post('/create', ${controllerName}.create); // Create a new ${modelName}
+router.get('/get', ${controllerName}.read); // Get all ${modelName}s
+router.put('/edit/:id', ${controllerName}.update); // Update a ${modelName} by ID
+router.delete('/delete/:id', ${controllerName}.delete); // Delete a ${modelName} by ID
+
+module.exports = router;
+`;
+
+  fs.writeFileSync(`src/routes/${routeName}.js`, routeTemplate.trim());
+  console.log(`${routeName} routes created for controller ${controllerName}`);
+
+  // Add the new route to index.js
+  await updateIndexFile(routeName, modelName);
+}
+
+// Function to update the index.js to include routes
+async function updateIndexFile(routeName, modelName) {
+  const indexPath = path.join('src', 'index.js');
+  let indexFile = fs.readFileSync(indexPath, 'utf-8');
+
+  const importStatement = `const ${routeName} = require('./routes/${routeName}');\n`;
+  if (!indexFile.includes(importStatement)) {
+    indexFile = indexFile.replace('//routes importes', `//routes importes\n${importStatement}`);
+  }
+
+  const useStatement = `app.use('/api/${modelName.toLowerCase()}', ${routeName});\n`;
+  if (!indexFile.includes(useStatement)) {
+    indexFile = indexFile.replace('// Use the  routes', `// Use the  routes\n${useStatement}`);
+  }
+
+  fs.writeFileSync(indexPath, indexFile);
+  console.log(`Updated index.js to include ${routeName} routes`);
+}
+
+// Function to create a model directly
+async function createModelDirectly() {
+  const { modelName } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'modelName',
+      message: 'Enter model name:',
+      validate: (input) => input ? true : 'Model name cannot be empty!',
+    }
+  ]);
 
   // Prompt for fields
   const fields = [];
   let addMoreFields = true;
 
   while (addMoreFields) {
-    const { fieldName, fieldType } = await inquirer.prompt([
+    const { fieldName, fieldType, fieldRequired } = await inquirer.prompt([
       {
         type: 'input',
         name: 'fieldName',
-        message: 'Enter field name:',
+        message: '  Enter field name:',
         validate: (input) => input ? true : 'Field name cannot be empty!',
       },
       {
         type: 'list',
         name: 'fieldType',
-        message: 'Select field type:',
+        message: '  Select field type:',
         choices: ['string', 'number', 'boolean', 'date', 'text'],
+      },
+      {
+        type: 'confirm',
+        name: 'fieldRequired',
+        message: '  Is the field required?',
+        default: true,
       }
     ]);
-    fields.push({ name: fieldName, type: fieldType });
+    fields.push({ name: fieldName, type: fieldType, required: fieldRequired });
 
     const { addAnotherField } = await inquirer.prompt([
       {
@@ -96,243 +223,30 @@ async function createEntity(entityName) {
     addMoreFields = addAnotherField;
   }
 
-  const entityTemplate = `class ${entityName} {\n  constructor() {\n${fields.map(field => `    this.${field.name} = null; // ${field.type}`).join('\n')}\n  }\n}\n\nmodule.exports = ${entityName};`;
-
-  fs.writeFileSync(`./src/entities/${entityName}.js`, entityTemplate.trim());
-  console.log(`${entityName} entity created.`);
-
-  // Automatically create model
-  await createModel(entityName, fields);
-
-  // Ask if user wants to create a controller
-  const { createControllerAnswer } = await inquirer.prompt([
+  // Prompt for timestamps
+  const { addTimestamps } = await inquirer.prompt([
     {
       type: 'confirm',
-      name: 'createControllerAnswer',
-      message: `Do you want to create a controller for ${entityName}?`,
+      name: 'addTimestamps',
+      message: 'Do you want to add timestamps?',
       default: true,
     }
   ]);
 
-  if (createControllerAnswer) {
-    await createController(entityName);
-  }
+  await createModel(modelName, fields, addTimestamps);
 }
 
-// Function to create a controller with CRUD methods
-async function createController(entityName) {
-  const controllerName = `${entityName}Controller`;
-  const modelName = `${entityName}Model`;
-
-
-  const controllerTemplate = `
-const ${modelName} = require('../models/${modelName}');
-const connectDB = require('../configs/database');
-
-class ${controllerName} {
-  static async create(req, res) {
-    try {
-      await connectDB();
-      const instance = new ${modelName}(req.body);
-      await instance.save();
-      res.status(201).json(instance);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  }
-
-  static async read(req, res) {
-    try {
-      await connectDB();
-      const instances = await ${modelName}.find();
-      res.status(200).json(instances);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  }
-
-  static async update(req, res) {
-    try {
-      await connectDB();
-      const { id } = req.params;
-      const updatedInstance = await ${modelName}.findByIdAndUpdate(id, req.body, { new: true });
-      if (!updatedInstance) {
-        return res.status(404).json({ message: 'Not found' });
-      }
-      res.status(200).json(updatedInstance);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  }
-
-  static async delete(req, res) {
-    try {
-      await connectDB();
-      const { id } = req.params;
-      const deletedInstance = await ${modelName}.findByIdAndDelete(id);
-      if (!deletedInstance) {
-        return res.status(404).json({ message: 'Not found' });
-      }
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  }
-}
-
-module.exports = ${controllerName};
-`;
-
-  fs.writeFileSync(`./src/controllers/${controllerName}.js`, controllerTemplate.trim());
-  console.log(`${controllerName} controller created for model ${modelName}`);
-
-  // Ask if the user wants to create routes
-  const { createRoutesAnswer } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'createRoutesAnswer',
-      message: `Do you want to create routes for ${controllerName}?`,
-      default: true,
-    }
-  ]);
-
-  if (createRoutesAnswer) {
-    await createRoutes(entityName);
-  }
-}
-
-// Function to create routes for a controller
-async function createRoutes(entityName) {
-  const routeName = `${entityName}Routes`;
-  const controllerName = `${entityName}Controller`;
-
-  const routeTemplate = `
-const express = require('express');
-const ${controllerName} = require('../controllers/${controllerName}');
-
-const router = express.Router();
-
-// Define the routes for the ${entityName} resource
-router.post('/create', ${controllerName}.create); // Create a new ${entityName}
-router.get('/get', ${controllerName}.read); // Get all ${entityName}s
-router.put('/edit/:id', ${controllerName}.update); // Update a ${entityName} by ID
-router.delete('/delete/:id', ${controllerName}.delete); // Delete a ${entityName} by ID
-
-module.exports = router;
-`;
-
-  fs.writeFileSync(`src/routes/${routeName}.js`, routeTemplate.trim());
-  console.log(`${routeName} routes created for controller ${controllerName}`);
-
-  // Update the index file to include the new routes
-  await updateIndexFile(routeName);
-}
-
-// Function to update the index.js to include routes
-async function updateIndexFile(routeName) {
-  const indexPath = path.join('src', 'index.js');
-  let indexFile = fs.readFileSync(indexPath, 'utf-8');
-
-  const importStatement = `const ${routeName} = require('./routes/${routeName}');\n`;
-  if (!indexFile.includes(importStatement)) {
-    indexFile = importStatement + indexFile; // Add import at the top
-  }
-
-  const useStatement = `app.use('/api/${routeName.replace('Routes', '').toLowerCase()}', ${routeName});\n`;
-  const serverStartIndex = indexFile.indexOf('app.listen');
-  if (serverStartIndex !== -1 && !indexFile.includes(useStatement)) {
-    indexFile = indexFile.slice(0, serverStartIndex) + useStatement + indexFile.slice(serverStartIndex); // Add use statement before server start
-  }
-
-  fs.writeFileSync(indexPath, indexFile);
-  console.log(`Updated index.js to include ${routeName} routes`);
-}
-
-// Function to create a migration
-async function createMigration() {
-  // Migration creation logic here...
-  console.log('Migration creation logic is not implemented yet.');
-}
-
-// Function to create CRUD operations
-async function createCrud(entityName) {
-  const modelName = `${entityName}Model`;
-  const controllerName = `${entityName}Controller`;
-  const routeName = `${entityName}Routes`;
-
-  if (!fileExists(`./src/entities/${entityName}.js`)) {
-    console.log(`Entity ${entityName} does not exist. Creating it now.`);
-    await createEntity(entityName);
-  }
-
-  if (!fileExists(`./src/models/${modelName}.js`)) {
-    console.log(`Model ${modelName} does not exist. Creating it now.`);
-    await createModel(entityName);
-  }
-
-  if (!fileExists(`./src/controllers/${controllerName}.js`)) {
-    console.log(`Controller ${controllerName} does not exist. Creating it now.`);
-    await createController(entityName);
-  }
-
-  if (!fileExists(`./src/routes/${routeName}.js`)) {
-    console.log(`Routes ${routeName} do not exist. Creating it now.`);
-    await createRoutes(entityName);
-  }
-}
-
-// Command definitions
+// Command to create model directly
 program
-  .command('entity')
-  .description('Create a new entity')
-  .action(async () => {
-    const { entityName } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'entityName',
-        message: 'Enter entity name:',
-        validate: (input) => input ? true : 'Entity name cannot be empty!',
-      }
-    ]);
-    await createEntity(entityName);
-  });
-program
-  .command('controller')
-  .description('Create a new controller')
-  .action(async () => {
-    const { entityName } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'entityName',
-        message: 'Enter entity name:',
-        validate: (input) => input ? true : 'Entity name cannot be empty!',
-      }
-    ]);
-    await createController(entityName);
-  });
-program
-  .command('routes')
-  .description('Create a new routes file')
-  .action(async () => {
-    const { entityName } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'entityName',
-        message: 'Enter entity name:',
-        validate: (input) => input ? true : 'Entity name cannot be empty!',
-      }
-    ]);
-    await createRoutes(entityName);
-  });
-program
-  .command('migration')
-  .description('Create a new migration file')
-  .action(createMigration);
+  .command('model')
+  .description('Create a new model')
+  .action(createModelDirectly);
 
+// Command to create CRUD operations
 program
-  .command('crud <entityName>')
-  .description('Create CRUD operations for an entity')
-  .action(createCrud);
+  .command('crud')
+  .description('Create CRUD operations for a model')
+  .action(createModelDirectly);
 
 // Parse commands
 program.parse(process.argv);
