@@ -2,6 +2,7 @@
 const express = require('express');
 const cors = require("cors");
 const dotenv = require("dotenv");
+const path = require('path');
 
 
 // Import database connection
@@ -10,11 +11,9 @@ const connectDB = require('./configs/database');
 connectDB();
 
 //routes importes
-const aaRoutes = require('./routes/aaRoutes');
+const postRoutes = require('./routes/postRoutes');
 
-const dddRoutes = require('./routes/dddRoutes');
 
-const clientRoutes = require('./routes/clientRoutes');
 
 
 // end routes importes
@@ -31,11 +30,11 @@ app.use(express.json());
 
 
 // Use the  routes
-app.use('/api/aa', aaRoutes);
+app.use('/vvv', (req,res)=>{
+  res.sendFile(path.resolve(__dirname, 'views', 'post.html')); // Use path.resolve to get the absolute path
+});
 
-app.use('/api/ddd', dddRoutes);
-
-app.use('/api/client', clientRoutes);
+app.use('/api/post', postRoutes);
 
 
 

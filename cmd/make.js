@@ -236,6 +236,97 @@ async function createModelDirectly() {
   await createModel(modelName, fields, addTimestamps);
 }
 
+
+async function createViews(modelName) {
+  // Import the model to extract its schema
+  const mongooseModel = require(`../src/models/${modelName.toLowerCase()}`); // Adjust path as needed
+  const viewsDir = path.join('src', 'views'); // Directory to store views
+  const filePath = path.join(viewsDir, `${modelName}.html`); // Define the path for the HTML file
+
+  // Check if the views directory exists, create it if not
+  if (!fs.existsSync(viewsDir)) {
+    fs.mkdirSync(viewsDir);
+  }
+
+  // Extract attributes from the model schema
+  const attributes = Object.keys(mongooseModel.schema.paths)
+    .filter(key => !key.startsWith('_')) // Ignore internal properties
+    .map(key => ({ name: key }));
+
+  // Generate form fields based on model attributes
+  const formFields = attributes.map(attr => {
+    if(attr.name in ['createdAt', 'updatedAt']) return ``;
+    return `
+      <label for="${attr.name}">${attr.name}:</label>
+      <input type="text" name="${attr.name}" placeholder="${attr.name}" required />
+    `;
+  }).join('\n');
+
+  // Define the view template
+  const viewTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${modelName} CRUD</title>
+    <script>
+        async function fetchData() {
+            const response = await fetch('/api/${modelName}/get');
+            const data = await response.json();
+            const list = document.getElementById('data-list');
+            list.innerHTML = ''; // Clear existing data
+            data.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = JSON.stringify(item); // Display item data
+                list.appendChild(li);
+            });
+        }
+
+        async function createItem(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const response = await fetch('/api/${modelName}/create', {
+                method: 'POST',
+                body: JSON.stringify(Object.fromEntries(formData)),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (response.ok) {
+                fetchData(); // Refresh data after creating
+            }
+        }
+
+        async function deleteItem(id) {
+            const response = await fetch('/api/${modelName}/delete/' + id, {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                fetchData(); // Refresh data after deletion
+            }
+        }
+    </script>
+</head>
+<body onload="fetchData()">
+    <h1>${modelName} CRUD Operations</h1>
+
+    <form onsubmit="createItem(event)">
+        ${formFields} <!-- Insert dynamically generated form fields here -->
+        <button type="submit">Create</button>
+    </form>
+
+    <ul id="data-list"></ul>
+</body>
+</html>
+`;
+
+  // Write the view template to an HTML file
+  fs.writeFileSync(filePath, viewTemplate.trim());
+  console.log(`${modelName} view created at ${filePath}`);
+}
+
+
 // Command to create model directly
 program
   .command('model')
@@ -247,6 +338,23 @@ program
   .command('crud')
   .description('Create CRUD operations for a model')
   .action(createModelDirectly);
+
+// Command to create views
+program
+  .command('views')
+  .description('Create a view for CRUD operations for a model')
+  .action(async () => {
+    const { modelName } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'modelName',
+        message: 'Enter model name for CRUD view:',
+        validate: (input) => input ? true : 'Model name cannot be empty!',
+      }
+    ]);
+    await createViews(modelName);
+  });
+
 
 // Parse commands
 program.parse(process.argv);
