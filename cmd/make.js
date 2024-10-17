@@ -161,7 +161,7 @@ module.exports = router;
   console.log(`${routeName} routes created for controller ${controllerName}`);
 
   // Add the new route to index.js
-  await updateIndexFile(routeName, modelName);
+  await updateIndexFile(routeName, 'api/'+modelName);
 }
 
 async function updateIndexFile(routeName, modelName) {
@@ -276,7 +276,7 @@ function getInputType(instance) {
 // Function to create views for CRUD operations
 async function createViews(modelName) {
   // Import the model to extract its schema
-  const mongooseModel = require(`../src//models/${modelName.toLowerCase()}`); // Adjust path as needed
+  const mongooseModel = require(`../src/models/${modelName.toLowerCase()}`); // Adjust path as needed
   const viewsDir = path.join("src", "views"); // Directory to store views
   const filePath = path.join(viewsDir, `${modelName}.html`); // Define the path for the HTML file
 
@@ -286,9 +286,10 @@ async function createViews(modelName) {
   }
 
   // Extract attributes from the model schema, excluding '_id', 'createdAt', 'updatedAt', '__v'
+  
   const attributes = Object.keys(mongooseModel.schema.paths)
-    .filter((key) => !["_id", "createdAt", "updatedAt", "__v"].includes(key)) // Exclude these keys
-    .map((key) => {
+  .filter((key) => !["id","_id", "__v"].includes(key)) // Exclude these keys
+  .map((key) => {
       const schemaType = mongooseModel.schema.paths[key];
       return {
         name: key,
@@ -299,6 +300,7 @@ async function createViews(modelName) {
 
   // Generate form fields based on model attributes
   const formFields = attributes
+  .filter((attr) => !["_id", "createdAt", "updatedAt", "__v"].includes(attr.name)) // Exclude these keys
     .map((attr) => {
       return `
       <div class="form-group">
@@ -335,10 +337,11 @@ async function createViews(modelName) {
             const data = await response.json();
             const tableBody = document.getElementById('data-body');
             tableBody.innerHTML = ''; // Clear existing data
+            var i=1 ;
             data.forEach(item => {
                 const row = document.createElement('tr');
                 row.innerHTML = \`
-                    <td>\${item._id}</td>
+                    <td>\${i}</td>
                     ${attributes
                       .map((attr) => `<td>\${item.${attr.name}}</td>`)
                       .join("")}
@@ -348,6 +351,7 @@ async function createViews(modelName) {
                     </td>
                 \`;
                 tableBody.appendChild(row);
+                i=i+1;
             });
         }
 
@@ -363,6 +367,7 @@ async function createViews(modelName) {
             });
             if (response.ok) {
                 $('#createModal').modal('hide');
+                document.getElementById('createForm').reset();
                 fetchData(); // Refresh data after creating
             }
         }
@@ -406,7 +411,7 @@ async function createViews(modelName) {
                     <h5 class="modal-title" id="createModalLabel">Create New ${modelName}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <form onsubmit="createItem(event)">
+                <form onsubmit="createItem(event)" id='createForm'>
                     <div class="modal-body">
                         ${formFields} <!-- Insert dynamically generated form fields here -->
                     </div>
@@ -461,30 +466,7 @@ module.exports = router;
   await updateIndexFile(`${modelName}ViewRoutes`, modelName);
 }
 
-// Function to update index.js with the new view route
-async function updateIndexFile(routeName, modelName) {
-  const indexPath = path.join("src", "index.js");
-  let indexFile = fs.readFileSync(indexPath, "utf-8");
 
-  const importStatement = `const ${routeName} = require('./routes/${routeName}');\n`;
-  if (!indexFile.includes(importStatement)) {
-    indexFile = indexFile.replace(
-      "//routes importes",
-      `//routes importes\n${importStatement}`
-    );
-  }
-
-  const useStatement = `app.use('/${modelName}', ${routeName});\n`;
-  if (!indexFile.includes(useStatement)) {
-    indexFile = indexFile.replace(
-      "// Use the  routes",
-      `// Use the  routes\n${useStatement}`
-    );
-  }
-
-  fs.writeFileSync(indexPath, indexFile);
-  console.log(`Updated index.js to include ${routeName}`);
-}
 
 // Command to create model directly
 program
