@@ -1,43 +1,45 @@
 #!/usr/bin/env node
 
-const { program } = require('commander');
-const inquirer = require('inquirer');
-const fs = require('fs');
-const path = require('path');
+const { program } = require("commander");
+const inquirer = require("inquirer");
+const fs = require("fs");
+const path = require("path");
 
 // Utility function to check if a file exists
 const fileExists = (filePath) => fs.existsSync(filePath);
 
 // Function to create a model
 async function createModel(modelName, fields, addTimestamps) {
-  const mongooseFields = fields.map(field => {
-    let mongooseType;
+  const mongooseFields = fields
+    .map((field) => {
+      let mongooseType;
 
-    switch (field.type) {
-      case 'string':
-        mongooseType = 'String';
-        break;
-      case 'number':
-        mongooseType = 'Number';
-        break;
-      case 'boolean':
-        mongooseType = 'Boolean';
-        break;
-      case 'date':
-        mongooseType = 'Date';
-        break;
-      case 'text':
-        mongooseType = 'String';
-        break;
-      default:
-        mongooseType = 'String';
-        break;
-    }
+      switch (field.type) {
+        case "string":
+          mongooseType = "String";
+          break;
+        case "number":
+          mongooseType = "Number";
+          break;
+        case "boolean":
+          mongooseType = "Boolean";
+          break;
+        case "date":
+          mongooseType = "Date";
+          break;
+        case "text":
+          mongooseType = "String";
+          break;
+        default:
+          mongooseType = "String";
+          break;
+      }
 
-    return `  ${field.name}: { type: ${mongooseType}, required: ${field.required} },`;
-  }).join('\n');
+      return `  ${field.name}: { type: ${mongooseType}, required: ${field.required} },`;
+    })
+    .join("\n");
 
-  const timestampsOption = addTimestamps ? `, { timestamps: true }` : '';
+  const timestampsOption = addTimestamps ? `, { timestamps: true }` : "";
 
   const modelTemplate = `
 const mongoose = require('mongoose');
@@ -49,17 +51,21 @@ ${mongooseFields}
 module.exports = mongoose.model('${modelName}', ${modelName}Schema);
 `;
 
-  fs.writeFileSync(`./src/models/${modelName}.js`, modelTemplate.trim());
-  console.log(`Model ${modelName} created with fields: ${fields.map(f => f.name).join(', ')}`);
+  fs.writeFileSync(`src/models/${modelName}.js`, modelTemplate.trim());
+  console.log(
+    `Model ${modelName} created with fields: ${fields
+      .map((f) => f.name)
+      .join(", ")}`
+  );
 
   // Ask if the user wants to create a controller
   const { createControllerAnswer } = await inquirer.prompt([
     {
-      type: 'confirm',
-      name: 'createControllerAnswer',
+      type: "confirm",
+      name: "createControllerAnswer",
       message: `Do you want to create a controller for ${modelName}?`,
       default: true,
-    }
+    },
   ]);
 
   if (createControllerAnswer) {
@@ -70,7 +76,6 @@ module.exports = mongoose.model('${modelName}', ${modelName}Schema);
 // Function to create a controller with CRUD methods
 async function createController(modelName) {
   const controllerName = `${modelName}Controller`;
-
 
   const controllerTemplate = `
 const CrudController = require('./CrudController');
@@ -109,17 +114,22 @@ class ${controllerName} extends CrudController {
 module.exports = new ${controllerName}();
 `;
 
-  fs.writeFileSync(`./src/controllers/${controllerName}.js`, controllerTemplate.trim());
-  console.log(`${controllerName} created, extending the global CRUD controller.`);
+  fs.writeFileSync(
+    `src/controllers/${controllerName}.js`,
+    controllerTemplate.trim()
+  );
+  console.log(
+    `${controllerName} created, extending the global CRUD controller.`
+  );
 
   // Ask if the user wants to create routes
   const { createRoutesAnswer } = await inquirer.prompt([
     {
-      type: 'confirm',
-      name: 'createRoutesAnswer',
+      type: "confirm",
+      name: "createRoutesAnswer",
       message: `Do you want to create routes for ${controllerName}?`,
       default: true,
-    }
+    },
   ]);
 
   if (createRoutesAnswer) {
@@ -154,34 +164,45 @@ module.exports = router;
   await updateIndexFile(routeName, modelName);
 }
 
-// Function to update the index.js to include routes
 async function updateIndexFile(routeName, modelName) {
   const indexPath = path.join('src', 'index.js');
   let indexFile = fs.readFileSync(indexPath, 'utf-8');
 
   const importStatement = `const ${routeName} = require('./routes/${routeName}');\n`;
+  const useStatement = `app.use('/${modelName}', ${routeName});\n`;
+
+  // Check if the import statement already exists
   if (!indexFile.includes(importStatement)) {
     indexFile = indexFile.replace('//routes importes', `//routes importes\n${importStatement}`);
+    console.log(`Added import for ${routeName}`);
+  } else {
+    console.log(`Import for ${routeName} already exists.`);
   }
 
-  const useStatement = `app.use('/api/${modelName.toLowerCase()}', ${routeName});\n`;
+  // Check if the app.use statement already exists
   if (!indexFile.includes(useStatement)) {
     indexFile = indexFile.replace('// Use the  routes', `// Use the  routes\n${useStatement}`);
+    console.log(`Added app.use for ${modelName}`);
+  } else {
+    console.log(`app.use for ${modelName} already exists.`);
   }
 
+  // Write back to index.js
   fs.writeFileSync(indexPath, indexFile);
-  console.log(`Updated index.js to include ${routeName} routes`);
+  console.log(`Updated index.js for ${routeName}`);
 }
+
+
 
 // Function to create a model directly
 async function createModelDirectly() {
   const { modelName } = await inquirer.prompt([
     {
-      type: 'input',
-      name: 'modelName',
-      message: 'Enter model name:',
-      validate: (input) => input ? true : 'Model name cannot be empty!',
-    }
+      type: "input",
+      name: "modelName",
+      message: "Enter model name:",
+      validate: (input) => (input ? true : "Model name cannot be empty!"),
+    },
   ]);
 
   // Prompt for fields
@@ -191,33 +212,33 @@ async function createModelDirectly() {
   while (addMoreFields) {
     const { fieldName, fieldType, fieldRequired } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'fieldName',
-        message: '  Enter field name:',
-        validate: (input) => input ? true : 'Field name cannot be empty!',
+        type: "input",
+        name: "fieldName",
+        message: "  Enter field name:",
+        validate: (input) => (input ? true : "Field name cannot be empty!"),
       },
       {
-        type: 'list',
-        name: 'fieldType',
-        message: '  Select field type:',
-        choices: ['string', 'number', 'boolean', 'date', 'text'],
+        type: "list",
+        name: "fieldType",
+        message: "  Select field type:",
+        choices: ["string", "number", "boolean", "date", "text"],
       },
       {
-        type: 'confirm',
-        name: 'fieldRequired',
-        message: '  Is the field required?',
+        type: "confirm",
+        name: "fieldRequired",
+        message: "  Is the field required?",
         default: true,
-      }
+      },
     ]);
     fields.push({ name: fieldName, type: fieldType, required: fieldRequired });
 
     const { addAnotherField } = await inquirer.prompt([
       {
-        type: 'confirm',
-        name: 'addAnotherField',
-        message: 'Do you want to add another field?',
+        type: "confirm",
+        name: "addAnotherField",
+        message: "Do you want to add another field?",
         default: true,
-      }
+      },
     ]);
 
     addMoreFields = addAnotherField;
@@ -226,21 +247,37 @@ async function createModelDirectly() {
   // Prompt for timestamps
   const { addTimestamps } = await inquirer.prompt([
     {
-      type: 'confirm',
-      name: 'addTimestamps',
-      message: 'Do you want to add timestamps?',
+      type: "confirm",
+      name: "addTimestamps",
+      message: "Do you want to add timestamps?",
       default: true,
-    }
+    },
   ]);
 
   await createModel(modelName, fields, addTimestamps);
 }
 
+// Helper function to map Mongoose types to HTML input types
+function getInputType(instance) {
+  switch (instance) {
+    case "String":
+      return "text";
+    case "Number":
+      return "number";
+    case "Date":
+      return "date";
+    case "Boolean":
+      return "checkbox";
+    default:
+      return "text";
+  }
+}
 
+// Function to create views for CRUD operations
 async function createViews(modelName) {
   // Import the model to extract its schema
-  const mongooseModel = require(`../src/models/${modelName.toLowerCase()}`); // Adjust path as needed
-  const viewsDir = path.join('src', 'views'); // Directory to store views
+  const mongooseModel = require(`../src//models/${modelName.toLowerCase()}`); // Adjust path as needed
+  const viewsDir = path.join("src", "views"); // Directory to store views
   const filePath = path.join(viewsDir, `${modelName}.html`); // Define the path for the HTML file
 
   // Check if the views directory exists, create it if not
@@ -248,21 +285,33 @@ async function createViews(modelName) {
     fs.mkdirSync(viewsDir);
   }
 
-  // Extract attributes from the model schema
+  // Extract attributes from the model schema, excluding '_id', 'createdAt', 'updatedAt', '__v'
   const attributes = Object.keys(mongooseModel.schema.paths)
-    .filter(key => !key.startsWith('_')) // Ignore internal properties
-    .map(key => ({ name: key }));
+    .filter((key) => !["_id", "createdAt", "updatedAt", "__v"].includes(key)) // Exclude these keys
+    .map((key) => {
+      const schemaType = mongooseModel.schema.paths[key];
+      return {
+        name: key,
+        type: getInputType(schemaType.instance), // Map Mongoose type to HTML input type
+        required: schemaType.isRequired || false, // Check if the field is required
+      };
+    });
 
   // Generate form fields based on model attributes
-  const formFields = attributes.map(attr => {
-    if(attr.name in ['createdAt', 'updatedAt']) return ``;
-    return `
-      <label for="${attr.name}">${attr.name}:</label>
-      <input type="text" name="${attr.name}" placeholder="${attr.name}" required />
+  const formFields = attributes
+    .map((attr) => {
+      return `
+      <div class="form-group">
+        <label for="${attr.name}">${attr.name}:</label>
+        <input class="form-control" type="${attr.type}" name="${
+        attr.name
+      }" placeholder="${attr.name}" ${attr.required ? "required" : ""} />
+      </div>
     `;
-  }).join('\n');
+    })
+    .join("\n");
 
-  // Define the view template
+  // Define the view template with Bootstrap and DataTables
   const viewTemplate = `
 <!DOCTYPE html>
 <html lang="en">
@@ -270,16 +319,35 @@ async function createViews(modelName) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${modelName} CRUD</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        $(document).ready(function() {
+            $('#data-table').DataTable();
+            fetchData();
+        });
+
         async function fetchData() {
             const response = await fetch('/api/${modelName}/get');
             const data = await response.json();
-            const list = document.getElementById('data-list');
-            list.innerHTML = ''; // Clear existing data
+            const tableBody = document.getElementById('data-body');
+            tableBody.innerHTML = ''; // Clear existing data
             data.forEach(item => {
-                const li = document.createElement('li');
-                li.textContent = JSON.stringify(item); // Display item data
-                list.appendChild(li);
+                const row = document.createElement('tr');
+                row.innerHTML = \`
+                    <td>\${item._id}</td>
+                    ${attributes
+                      .map((attr) => `<td>\${item.${attr.name}}</td>`)
+                      .join("")}
+                    <td>
+                        <button class="btn btn-primary" onclick="editItem('\${item._id}')">Edit</button>
+                        <button class="btn btn-danger" onclick="deleteItem('\${item._id}')">Delete</button>
+                    </td>
+                \`;
+                tableBody.appendChild(row);
             });
         }
 
@@ -294,6 +362,7 @@ async function createViews(modelName) {
                 }
             });
             if (response.ok) {
+                $('#createModal').modal('hide');
                 fetchData(); // Refresh data after creating
             }
         }
@@ -306,17 +375,49 @@ async function createViews(modelName) {
                 fetchData(); // Refresh data after deletion
             }
         }
+
+        function editItem(id) {
+            // Add your edit item logic here (you can open a modal and populate the form)
+            alert('Edit functionality not implemented yet');
+        }
     </script>
 </head>
-<body onload="fetchData()">
-    <h1>${modelName} CRUD Operations</h1>
+<body class="container">
+    <h1 class="my-4">${modelName} CRUD Operations</h1>
 
-    <form onsubmit="createItem(event)">
-        ${formFields} <!-- Insert dynamically generated form fields here -->
-        <button type="submit">Create</button>
-    </form>
+    <button class="btn btn-success mb-4" data-bs-toggle="modal" data-bs-target="#createModal">Create New ${modelName}</button>
 
-    <ul id="data-list"></ul>
+    <table id="data-table" class="table table-striped table-bordered">
+        <thead>
+            <tr>
+                <th>ID</th>
+                ${attributes.map((attr) => `<th>${attr.name}</th>`).join("")}
+                <th width='15%'>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="data-body"></tbody>
+    </table>
+
+    <!-- Modal for creating new ${modelName} -->
+    <div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createModalLabel">Create New ${modelName}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form onsubmit="createItem(event)">
+                    <div class="modal-body">
+                        ${formFields} <!-- Insert dynamically generated form fields here -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary">Create</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 `;
@@ -324,37 +425,108 @@ async function createViews(modelName) {
   // Write the view template to an HTML file
   fs.writeFileSync(filePath, viewTemplate.trim());
   console.log(`${modelName} view created at ${filePath}`);
+
+  await createViewsRouters(modelName);
 }
 
+// Function to create view routes and add them to index.js
+async function createViewsRouters(modelName) {
+  const routesDir = path.join("src", "routes"); // Directory to store routes
+  const routeFilePath = path.join(routesDir, `${modelName}ViewRoutes.js`); // Define the path for the routes file
+
+  // Check if the routes directory exists, create it if not
+  if (!fs.existsSync(routesDir)) {
+    fs.mkdirSync(routesDir);
+  }
+
+  // Generate the view route template
+  const viewRouteTemplate = `
+const express = require('express');
+const path = require('path');
+const router = express.Router();
+
+// Serve the ${modelName} view
+router.get('/page', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../views/${modelName}.html'));
+});
+
+module.exports = router;
+`;
+
+  // Write the view route to a file
+  fs.writeFileSync(routeFilePath, viewRouteTemplate.trim());
+  console.log(`${modelName} view route created at ${routeFilePath}`);
+
+  // Update the index.js file to include the route
+  await updateIndexFile(`${modelName}ViewRoutes`, modelName);
+}
+
+// Function to update index.js with the new view route
+async function updateIndexFile(routeName, modelName) {
+  const indexPath = path.join("src", "index.js");
+  let indexFile = fs.readFileSync(indexPath, "utf-8");
+
+  const importStatement = `const ${routeName} = require('./routes/${routeName}');\n`;
+  if (!indexFile.includes(importStatement)) {
+    indexFile = indexFile.replace(
+      "//routes importes",
+      `//routes importes\n${importStatement}`
+    );
+  }
+
+  const useStatement = `app.use('/${modelName}', ${routeName});\n`;
+  if (!indexFile.includes(useStatement)) {
+    indexFile = indexFile.replace(
+      "// Use the  routes",
+      `// Use the  routes\n${useStatement}`
+    );
+  }
+
+  fs.writeFileSync(indexPath, indexFile);
+  console.log(`Updated index.js to include ${routeName}`);
+}
 
 // Command to create model directly
 program
-  .command('model')
-  .description('Create a new model')
+  .command("model")
+  .description("Create a new model")
   .action(createModelDirectly);
 
 // Command to create CRUD operations
 program
-  .command('crud')
-  .description('Create CRUD operations for a model')
+  .command("crud")
+  .description("Create CRUD operations for a model")
   .action(createModelDirectly);
 
 // Command to create views
 program
-  .command('views')
-  .description('Create a view for CRUD operations for a model')
+  .command("views")
+  .description("Create a view for CRUD operations for a model")
   .action(async () => {
     const { modelName } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'modelName',
-        message: 'Enter model name for CRUD view:',
-        validate: (input) => input ? true : 'Model name cannot be empty!',
-      }
+        type: "input",
+        name: "modelName",
+        message: "Enter model name for CRUD view:",
+        validate: (input) => (input ? true : "Model name cannot be empty!"),
+      },
     ]);
     await createViews(modelName);
   });
 
-
+program
+  .command("views-routers")
+  .description("Create routes for serving CRUD views and add them to index.js")
+  .action(async () => {
+    const { modelName } = await inquirer.prompt([
+      {
+        type: "input",
+        name: "modelName",
+        message: "Enter model name for CRUD view route:",
+        validate: (input) => (input ? true : "Model name cannot be empty!"),
+      },
+    ]);
+    await createViewsRouters(modelName);
+  });
 // Parse commands
 program.parse(process.argv);

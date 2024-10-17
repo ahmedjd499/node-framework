@@ -11,10 +11,6 @@ const connectDB = require('./configs/database');
 connectDB();
 
 //routes importes
-const postRoutes = require('./routes/postRoutes');
-
-
-
 
 // end routes importes
 
@@ -30,13 +26,6 @@ app.use(express.json());
 
 
 // Use the  routes
-app.use('/vvv', (req,res)=>{
-  res.sendFile(path.resolve(__dirname, 'views', 'post.html')); // Use path.resolve to get the absolute path
-});
-
-app.use('/api/post', postRoutes);
-
-
 
 //end use routes
 
