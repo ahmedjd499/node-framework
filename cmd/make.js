@@ -257,7 +257,7 @@ async function createModelDirectly() {
   await createModel(modelName, fields, addTimestamps);
 }
 
-// Helper function to map Mongoose types to HTML input types
+// Function to determine the input type based on Mongoose field instance
 function getInputType(instance) {
   switch (instance) {
     case "String":
@@ -268,17 +268,66 @@ function getInputType(instance) {
       return "date";
     case "Boolean":
       return "checkbox";
+    case "Array":
+      return "array"; // Handle arrays separately
     default:
       return "text";
   }
 }
 
+
+// Recursively generate form fields for complex objects or nested schemas
+function generateFormFields(attributes, parent = "") {
+  return attributes
+    .map((attr) => {
+      const fullName = parent ? `${parent}.${attr.name}` : attr.name;
+
+      if (attr.schema) {
+        // Handle nested schema or subdocuments
+        return `
+        <fieldset>
+          <legend>${attr.name}</legend>
+          ${generateFormFields(Object.keys(attr.schema.paths)
+            .filter(key => !["id", "_id", "__v"].includes(key))
+            .map((key) => {
+              const schemaType = attr.schema.paths[key];
+              return {
+                name: key,
+                type: getInputType(schemaType.instance),
+                schema: schemaType.schema, // Include nested schemas
+                required: schemaType.isRequired || false,
+              };
+            }), fullName)}
+        </fieldset>
+        `;
+      }
+
+      if (attr.type === "array") {
+        // Handle arrays, support for array of strings, numbers, or even objects
+        return `
+        <div class="form-group">
+          <label for="${fullName}">${attr.name} (multiple):</label>
+          <input class="form-control" type="text" name="${fullName}[]" placeholder="Enter multiple ${attr.name}" />
+        </div>
+      `;
+      }
+
+      // Regular fields
+      return `
+      <div class="form-group">
+        <label for="${fullName}">${attr.name}:</label>
+        <input class="form-control" type="${attr.type}" name="${fullName}" placeholder="${attr.name}" ${attr.required ? "required" : ""} />
+      </div>
+      `;
+    })
+    .join("\n");
+}
+// Function to create views for CRUD operations
 // Function to create views for CRUD operations
 async function createViews(modelName) {
-  // Import the model to extract its schema
-  const mongooseModel = require(`../src/models/${modelName.toLowerCase()}`); // Adjust path as needed
-  const viewsDir = path.join("src", "views"); // Directory to store views
-  const filePath = path.join(viewsDir, `${modelName}.html`); // Define the path for the HTML file
+  const mongooseModel = require(`../src/models/${modelName.toLowerCase()}`); // Adjust the model path
+  const viewsDir = path.join("src", "views");
+  const filePath = path.join(viewsDir, `${modelName}.html`);
 
   // Check if the views directory exists, create it if not
   if (!fs.existsSync(viewsDir)) {
@@ -286,33 +335,25 @@ async function createViews(modelName) {
   }
 
   // Extract attributes from the model schema, excluding '_id', 'createdAt', 'updatedAt', '__v'
-  
   const attributes = Object.keys(mongooseModel.schema.paths)
-  .filter((key) => !["id","_id", "__v"].includes(key)) // Exclude these keys
-  .map((key) => {
+    .filter((key) => !["_id", "createdAt", "updatedAt", "__v"].includes(key)) // Exclude keys
+    .map((key) => {
       const schemaType = mongooseModel.schema.paths[key];
       return {
         name: key,
         type: getInputType(schemaType.instance), // Map Mongoose type to HTML input type
+        schema: schemaType.schema || null, // Pass nested schema if available
         required: schemaType.isRequired || false, // Check if the field is required
       };
     });
 
-  // Generate form fields based on model attributes
-  const formFields = attributes
-  .filter((attr) => !["_id", "createdAt", "updatedAt", "__v"].includes(attr.name)) // Exclude these keys
-    .map((attr) => {
-      return `
-      <div class="form-group">
-        <label for="${attr.name}">${attr.name}:</label>
-        <input class="form-control" type="${attr.type}" name="${
-        attr.name
-      }" placeholder="${attr.name}" ${attr.required ? "required" : ""} />
-      </div>
-    `;
-    })
-    .join("\n");
+  // Generate form fields based on model attributes, including nested objects
+  const formFields = generateFormFields(attributes);
 
+  // Build the complete HTML form structure
+  const formHTML = `
+      ${formFields}
+  `;
   // Define the view template with Bootstrap and DataTables
   const viewTemplate = `
 <!DOCTYPE html>
@@ -494,6 +535,22 @@ program
       },
     ]);
     await createViews(modelName);
+  });
+
+
+  program
+  .command("routes")
+  .description("Create a view for CRUD operations for a model")
+  .action(async () => {
+    const { modelName } = await inquirer.prompt([
+      {
+        type: "input",
+        name: "modelName",
+        message: "Enter model name :",
+        validate: (input) => (input ? true : "Model name cannot be empty!"),
+      },
+    ]);
+    await createRoutes(modelName);
   });
 
 program
